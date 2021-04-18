@@ -1,0 +1,378 @@
+---
+title: "Exploring the BRFSS data"
+output: 
+  html_document: 
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+---
+
+## Setup
+
+### Load packages
+
+```{r load-packages, message = FALSE}
+library(ggplot2)
+library(dplyr)
+library(tidyverse)
+```
+
+
+
+### Load data
+
+
+```{r load-data}
+load("brfss2013.RData")
+```
+
+
+
+* * *
+
+## Part 1: Data
+
+Information regarding data collection:
+- BRFSS conducts both landline telephone- and cellular telephone-based surveys
+- In conducting the BRFSS landline telephone survey, interviewers collect data from a **randomly selected** adult in a household. 
+- In conducting the cellular telephone version of the BRFSS questionnaire, interviewers collect data from an adult who participates by using a cellular telephone and resides in a private residence or college housing.
+
+conclusions about the data:
+- *generalizability*: The data collected by landline telephone is generalizable since participants were randomly. It is important to note that those contacted by cellular telephone must have a cellular tellephone, and reside in private residence or college housing. Thus, the data collected by cellular telephone isnt generalizable. 
+- *casuality*: casuality (also known as casuation) can only be determined through random assignment in an experiment, thus we cannot determine casuality here
+
+* * *
+
+
+## Part 2: Research questions
+
+
+### **Research quesion 1:**
+Is there a difference between month (**imonth** : *Interview Month*) and Health-Related Quality of Life (determined by: **physhlth**: *Number Of Days Physical Health Not Good*, **menthlth**: *Number Of Days Mental Health Not Good*). I expect a higher reported # of days for phshlth, menthlth, and poorhlth for the winter month than the summer.
+
+**physhlth**: Now thinking about your physical health, which includes physical illness and injury, for how many days during the past 30 days was your physical health not good? 
+
+**menthlth**: Now thinking about your mental health, which includes stress, depression, and problems with emotions, for how many days during the past 30 days was your mental health not good?
+
+If participants have more days in which their mental and physical health is not good, this information could be used by non-profits or other initiatives that address mental and physical health. If mental health is worse in the winter months, then orgnaizations might allocate more of their outreach budget in those months.
+
+
+### **Research quesion 2:**
+
+Is there a difference in health care access based on income levels (**income2**: *Income Level*) 
+
+Health Care Access
+**hlthpln1**: *Have Any Health Care Coverage*
+**persdoc2**: *Multiple Health Care Professionals*
+**medcost**: *Could Not See Dr. Because Of Cost*
+**checkup1**: *Length Of Time Since Last Routine Checkup*
+
+I expect that lower income levels will have lower access to health care
+
+
+### **Research quesion 3:**
+
+Is there a difference of general health (**genhlth**: *General Health*) by state (**_state**: *State Fips Code*)?
+
+* * *
+
+## Part 3: Exploratory data analysis
+
+
+
+### **Research quesion 1:**
+
+```{r}
+#select columns I want into new data frame called college_health
+month_health = brfss2013 %>% 
+  select(imonth, physhlth, menthlth)
+
+#look at first five rows
+head(month_health)
+```
+
+#### data information & descriptive statistics
+```{r}
+#look at data types
+lapply(month_health, class)
+
+```
+
+
+```{r}
+#look at number of na in each column
+sapply(month_health, function(x) sum(is.na(x)))
+```
+```{r,  results='hide'}
+#drop na
+month_health = na.omit(month_health)
+```
+
+
+```{r,}
+#look at summary of descriptive statistics
+summary(month_health)
+```
+- majority of people answered 0 for physhlth looking at the mean & the median
+
+
+
+#### plots
+
+```{r}
+#look at count for each & plot
+#I didnt use a histogram because the values are ordinal, instead I plotted the count for each value 0-30
+month_health %>%
+     group_by(physhlth) %>%
+      count() %>%
+      plot()
+
+#most counts in the extreme values 
+```
+```{r}
+#look at count for each & plot
+month_health %>%
+     group_by(menthlth) %>%
+      count() %>%
+      plot()
+```
+
+- there must be a mistake here because the values should be from 0 to 30. Need to remove this row, then replot
+
+```{r}
+dim(month_health)
+
+
+month_health = filter(month_health, menthlth <= 30)
+
+#we can see we lost that one row now
+dim(month_health)
+
+```
+
+```{r}
+#look at count for each & plot again for menthlth
+month_health %>%
+     group_by(menthlth) %>%
+      count() %>%
+      plot()
+```
+ - again higher count on the extremes
+ 
+```{r}
+#look at count for each month to see if one month has more collected data
+month_health %>%
+     group_by(imonth) %>%
+      count() %>%
+      plot()
+
+```
+- there was a lot more data collected in some months, and a significantly less amount of data collected in January. This will be needed to keep in mind going forward. Since the menthlth and physhlth are skewed toward the extremes, I will use the median as a measure going forward
+
+-Next, I will plot the medianfor physhlth and menthlth by each month
+      - MEDIAN: looking at median because data is composed of more extreme scores
+      
+```{r}
+plot(aggregate(month_health$physhlth,  
+          list(month_health$imonth),
+          median))
+
+plot(aggregate(month_health$menthlth,  
+          list(month_health$imonth),
+          median))
+
+#the median is 0 for all months in both menthlth and physhtl
+```
+
+
+```{r}
+#since the data is ordinal, im going to change the physhlth & menthlth to factors as well
+month_health$physhlth <- as.factor(month_health$physhlth)
+month_health$menthlth <- as.factor(month_health$menthlth)
+
+#look at data types
+lapply(month_health, class)
+```
+
+
+```{r, fig.width=8, fig.height=6}
+#median of physhlth
+table1 <- table(month_health$imonth, month_health$physhlth)
+mosaicplot(table1, main = "Mosaic Plot of physhlth",
+           sub = "Response by Month",
+           xlab = "Month",
+           ylab = "Response",
+           color = TRUE)
+```
+
+```{r, fig.width=8, fig.height=6}
+#median of physhlth
+table1 <- table(month_health$imonth, month_health$menthlth)
+mosaicplot(table1, main = "Mosaic Plot of menthlth",
+           sub = "Response by Month",
+           xlab = "Month",
+           ylab = "Response",
+           color = TRUE)
+```
+
+#### conclusions
+- based on the uneven number of per month, it is difficult to acertain whether responses changes from month to month. 
+- For physhlth, it seems as though there is a slight increase in percentage people who respond 0 (0 days have had poor physical health) in the summer months than the winter months
+- For menthtl, there does not seem to be change in percentange of people per response by month
+
+
+###**Research quesion 2:**
+
+**income2**: *Income Level*
+**hlthpln1**: *Have Any Health Care Coverage*
+**persdoc2**: *Multiple Health Care Professionals*
+**medcost**: *Could Not See Dr. Because Of Cost*
+**checkup1**: *Length Of Time Since Last Routine Checkup*
+
+
+```{r}
+#select columns I want into new data frame called college_health
+health_access = brfss2013 %>% 
+  select(income2, hlthpln1, persdoc2, medcost, checkup1)
+
+#look at first five rows
+head(health_access)
+```
+
+```{r}
+# look at values in each column
+for(col in colnames(health_access)){
+  print(unique(health_access[col]))
+}
+```
+
+```{r}
+#look at data types 
+lapply(health_access, class)
+```
+
+```{r}
+#look at number of na in each column
+sapply(health_access, function(x) sum(is.na(x)))
+```
+
+```{r,  results='hide'}
+#drop na
+health_access = na.omit(health_access)
+```
+
+
+```{r,}
+#look at summary of descriptive statistics
+summary(health_access)
+```
+
+
+```{r, fig.width=5, fig.height=3}
+#look at count for each 
+#I didnt use a histogram because the values are ordinal, instead I plotted the count for each value 0-30
+ggplot(health_access) + geom_bar(aes(x = income2))  + xlab("Income Level")
+ggplot(health_access) + geom_bar(aes(x = hlthpln1)) + xlab("Have Any Health Care Coverage")
+ggplot(health_access) + geom_bar(aes(x = persdoc2)) + xlab("Multiple Health Care Professionals")
+ggplot(health_access) + geom_bar(aes(x = medcost)) + xlab("Could Not See Dr. Because Of Cost")
+ggplot(health_access) + geom_bar(aes(x = checkup1)) + xlab("Length Of Time Since Last Routine Checkup")
+
+```
+
+
+What does this tell us?
+- income2: majority of those surveyed made $75,000 or more. Earlier I noted that because the cellular calls only reached those with private residence or college residence, the survey likely has more participants that are higher income.
+- hlthpln1: majority of those surveyed do have health care coverage
+- persdoc2: majority of those surveyed have at least one health care professional
+- medcost: majority of those surveyed did not fall into the category of could not see Dr. because of cost
+- checkup1: majority of those surveyed have had a routine checkup in the past year
+
+```{r, fig.width=12, fig.height=4}
+plot(health_access$income2, health_access$hlthpln1, xlab = "Income Level", ylab = "Have Any Health Care Coverage" )
+```
+- As income bracket increases, the percentage of those surveyed that dont have health insurance decrease
+
+
+```{r, fig.width=12, fig.height=4}
+plot(health_access$income2, health_access$persdoc2, xlab = "Income Level", ylab = "Multiple Health Care Professionals")
+```
+- As income bracket increases, the percentage of those with at least one health care professionals increases 
+
+```{r, fig.width=12, fig.height=4}
+plot(health_access$income2, health_access$medcost, xlab = "Income Level", ylab = "Could Not See Dr. Because Of Cost")
+```
+- As income bracket increases, the percentage of those who could not see a doctor because of cost decreased
+
+```{r, fig.width=12, fig.height=6}
+plot(health_access$income2, health_access$checkup1, xlab = "Income Level", ylab = "Length Of Time Since Last Routine Checkup")
+```
+- the percentage of people who have had a checkup within the past year is increases slightly with increased income level
+
+
+###**Research quesion 3:**
+
+```{r}
+#select columns I want into new data frame called college_health
+state_health = brfss2013 %>% 
+  select(genhlth, X_state)
+
+#look at first five rows
+head(state_health)
+```
+
+```{r}
+#look at data types 
+lapply(state_health, class)
+```
+
+```{r}
+#look at number of na in each column
+sapply(state_health, function(x) sum(is.na(x)))
+```
+
+```{r,  results='hide'}
+#drop na
+state_health = na.omit(state_health)
+```
+
+
+```{r,}
+#look at summary of descriptive statistics
+summary(state_health)
+```
+
+```{r,}
+#look at summary of descriptive statistics
+plot(state_health$genhlth, xlab = "general health", ylab = "count")
+
+```
+
+
+
+```{r, fig.width=10, fig.height=10}
+
+ggplot(state_health, aes(x = reorder(X_state, desc(X_state)))) + geom_bar() + coord_flip()
+
+```
+
+
+```{r, fig.width=10, fig.height=10}
+
+
+#reodering states to be in alphabetical order
+x = reorder(state_health$X_state, desc(state_health$X_state))
+
+
+ggplot(state_health, aes(x=x, fill = genhlth)) +
+    geom_bar(position="fill") + coord_flip() +  scale_fill_manual(values=c("#ffffb2", "#fecc5c", "#fd8d3c", "#f03b20", "#bd0026"))
+
+
+```
+
+- Here we can see the general health of participants by state
+
+
+
+
+
+
