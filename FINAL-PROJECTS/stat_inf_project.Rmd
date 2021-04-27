@@ -1,0 +1,265 @@
+---
+title: "Statistical inference with the GSS data"
+output: 
+  html_document: 
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+---
+
+## Setup
+
+### Load packages
+
+```{r load-packages, message = FALSE}
+library(ggplot2)
+library(dplyr)
+library(statsr)
+```
+
+### Load data
+
+Make sure your data and R Markdown files are in the same directory. When loaded
+your data file will be called `gss`. Delete this note when before you submit 
+your work. 
+
+```{r load-data}
+load("gss.Rdata")
+```
+
+
+
+* * *
+
+## Part 1: Data
+*Describe how the observations in the sample are collected, and the implications of this data collection method on the scope of inference (generalizability / causality). Note that you might will need to look into documentation on the GSS to answer this question. See http://gss.norc.org/ as well as the "More information on the data" section below*
+
+
+**info**: Since 1972, the General Social Survey (GSS) has provided politicians, policymakers, and scholars with a clear and unbiased perspective on what Americans think and feel about such issues as national spending priorities, crime and punishment, intergroup relations, and confidence in institutions.
+
+**Data Collection**: The vast majority of GSS data is obtained in face-to-face interviews. Computer-assisted personal interviewing (CAPI) began in the 2002 GSS. Under some conditions when it has proved difficult to arrange an in-person interview with a sampled respondent, GSS interviews may be conducted by telephone.
+
+**Sampling**: The GSS sample is drawn using an area probability design that randomly selects respondents in households across the United States. Respondents that become part of the GSS sample are from a mix of urban, suburban, and rural geographic areas. 
+
+**Generalizability**: The inferences made from this data set are generalizable because respondents are randomly selected. The results are generalizabile to the GSS Target population, which is Adults (18+) living in ONLY households in the United States. 
+
+**Causality**: This is an observational study with no random assignment, so we cannot infer causation.
+* * *
+
+## Part 2: Research question
+*Research question: (3 points) Come up with a research question that you want to answer using these data. You should phrase your research question in a way that matches up with the scope of inference your dataset allows for. You are welcomed to create new variables based on existing ones. Along with your research question include a brief discussion (1-2 sentences) as to why this question is of interest to you and/or your audience.*
+
+#### Is there sufficient evidence on the difference between respondents gender and respondents belief as to whether it should be possible for a pregnant woman to obtain a legal abortion if the woman wants it for any reason
+
+- Abortion is an issue that primarily affects women, thus is would informative to understand whether abortion is viewed differently between men and women. 
+
+##### Data selection: 
+- The analysis was done using the following variables:
+      - Abany: Abortion if woman wants for any reason (Yes or No)
+      - Sex: Respondent's sex (F or M)
+- NA's will be removed
+- This survey started in 1972, before Roe vs. Wade (1974). Due to broad societal changes the year of the answer was captured to analyze as well, and a second variable was added to determine ‘recency’. This will be determined to be pre 2000 and post 2000.
+
+```{r}
+abortion <- select(gss,year,sex,abany) %>% na.omit() %>%
+  mutate(recent=as.factor(ifelse(year>=2000,"R","H")))
+```
+
+* * *
+
+## Part 3: Exploratory data analysis
+
+```{r}
+#look at data types
+lapply(abortion, class)
+```
+
+```{r}
+#summary of each column of our dataframe
+summary(abortion)
+```
+
+```{r}
+#summary table
+abortion_table <- table(abortion$sex,abortion$abany)
+abortion_table
+
+#proportion table
+prop.table(abortion_table)
+```
+```{r}
+#proportion table H vs R
+abortion_table2 <- table(abortion$sex,abortion$abany, abortion$recent)
+prop.table(ftable(abortion_table2))
+```
+
+```{r}
+ggplot(abortion, aes(x=sex,  fill = abany)) +
+      geom_bar(position = "fill") + 
+      labs(y="Proportion",title="Male vs female responses from 1972 to 2018") + 
+      scale_fill_discrete(name = "Abortion")
+```
+ - Here it seems that a slightly higher precentage of the women said no it should not be possible for a pregnant woman to obtain a legal abortion if the woman wants it for any reason
+ 
+ 
+######Lets look at more recent data- from 2000 to 2018
+```{r}
+since2000 <- filter(abortion,recent=="R")
+summary(since2000)
+```
+ 
+
+```{r}
+#summary table
+since2000_table <- table(since2000$sex,since2000$abany)
+since2000_table
+
+#proportion table
+prop.table(since2000_table)
+```
+
+
+
+```{r}
+ggplot(since2000, aes(x=sex,  fill = abany)) +
+      geom_bar(position = "fill") + 
+      labs(y="Proportion",title="Impact of gender on abortion views from 1972 to 2018") + 
+      scale_fill_discrete(name = "Abortion")
+```
+- we see a similar trent, that women still report a slightly higher proportion of no's to the question of whether it should  be possible for a pregnant woman to obtain a legal abortion if the woman wants it for any reason
+
+```{r}
+ggplot(abortion) + aes(x=recent,fill=abany) + geom_bar(position = "fill") + facet_grid(.~sex) +
+  labs(x="1972-1999 (H) versus 2000-2018 (R)",y="Proportion",title="Impact of gender on abortion views") +
+  scale_fill_discrete(name="Abortion")
+
+```
+
+-overall a slightly higher percentage for both genders replies Yes in the recent era as opposed to the historical era
+
+```{r, fig.width=20, fig.height=5}
+
+ggplot(abortion) + aes(x=sex,fill=abany) + geom_bar(position = "fill") + facet_grid(.~year)
+```
+- looking at the proportions over the years, we can see fluctuations in the responses, but for most years, females respond no to the question more frequently than males
+
+* * *
+
+## Part 4: Inference
+
+
+### Choose statistical method
+Here we are estimating the difference between two proportions using a hypothesis test
+
+
+### Define hypothesis
+The null hypothesis (H0) is that there is no difference between responses among male and females
+The alternative hypothesis (HA) is a difference between responses among male and females
+
+H0: $p_{male}$ - $p_{female}$ = 0
+
+HA: $p_{male}$ - $p_{female}$ ≠ 0
+
+- we dont have a null value of the population proportion to calculate expected successess and expected failures, so we need a pooled proportion
+
+$$\hat{p}_{pool} = \frac{number of successes_{1} + number of successes_{2}}{n_{1} + n_{2}}$$
+
+
+```{r}
+abortion_table <- table(abortion$sex,abortion$abany)
+abortion_table
+```
+
+```{r}
+yes_male = 5792
+yes_female = 7095
+
+no_male = 8094
+no_female = 10826
+
+n_male = 5792 + 8094
+n_female = 7095 + 10826
+(yes_male + yes_female) / (n_male + n_female)
+```
+
+
+**$\hat{p}_{pool} =  0.4051624$**
+
+
+### Check for conditions
+##### Independence
+  - within groups:
+  
+      ✓ random sample
+      
+      ✓ the population of the US is 328.2 million so we have much less than 10% (~ 31807)
+      
+  - between groups:
+  
+      ✓ male ane female are independent of each other (non-paired)
+    
+      
+##### Success-failure condition
+  ✓  $n_{1}p_{1}$ ≥ 10   and    $n_{1}(1-p_{1})$ ≥ 10 
+  ✓  $n_{2}p_{2}$ ≥ 10   and    $n_{2}(1-p_{2})$ ≥ 10 
+  
+```{r}
+p_pool = 0.4051624
+
+n_male*p_pool
+n_male*(1-p_pool)
+
+n_female*(p_pool)
+n_female*(1-p_pool)
+```
+
+- Both independence and S-F conditions are met
+
+
+### Perform the inference tests
+
+$\hat{p}_{male} - \hat{p}_{female} \sim N(mean=0, SE = \sqrt{\frac{\hat{p}_{pool}(1- \hat{p}_{pool})}{n_1} + \frac{\hat{p}_{pool}(1- \hat{p}_{pool})}{n_2}}$ 
+
+
+```{r}
+numerator = p_pool*(1-p_pool)
+
+SE = sqrt((numerator/n_male) + (numerator/n_female))
+SE
+```
+
+$$point.estimate = \hat{p}_{male} - \hat{p}_{female}$$
+
+```{r}
+pt_estimate = (yes_male/n_male) - (yes_female/n_female)
+pt_estimate
+```
+
+
+
+- pt_estimate = 0.02120651
+- null_value = 0
+- SE = 0.005550159 
+
+
+### P value
+
+$$ Z = (point.estimate - null.value)/SE$$
+```{r}
+pt_estimate = 0.02120651
+null_value = 0
+SE = 0.005550159 
+
+Z = (pt_estimate - 0)/SE
+Z
+```
+
+```{r}
+pnorm(q=-Z, lower.tail=FALSE)
+```
+
+
+
+### Interpret the results
+
+The p-value is 0.9999335. If we use a significance level of α = 0.05, we would fail to reject the null hypothesis of our hypothesis test because this p-value is not less than 0.05. Thus, there is not a significant difference among genders regarding their resposne to the abortion question.
