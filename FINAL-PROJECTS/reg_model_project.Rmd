@@ -1,0 +1,235 @@
+---
+title: "Modeling and prediction for movies"
+output: 
+  html_document: 
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+---
+
+## Setup
+
+### Load packages
+
+```{r load-packages, message = FALSE}
+library(ggplot2)
+library(dplyr)
+library(statsr)
+library(tidyverse)
+library(broom)
+```
+
+### Load data
+
+Make sure your data and R Markdown files are in the same directory. When loaded
+your data file will be called `movies`. Delete this note when before you submit 
+your work. 
+
+```{r load-data}
+load("movies.Rdata")
+```
+
+
+
+* * *
+
+## Part 1: Data
+
+This is an observational, not an experimental study so we cannot assume causation/ infer casuality. However, the movies were randomly sampled so we can generalize to the population as a whole.
+
+
+
+
+
+
+* * *
+
+## Part 2: Research question
+Which variables best predict the audience score given to a particular movie? This information can be useful to companies such as Netflix to produce well-liked movies or put well-liked movies on their platform and thus generate more money.
+
+Multiple linear regression analysis makes several key assumptions:
+
+1. There must be a **linear relationship** between the outcome variable and the independent variables.  Scatterplots can show whether there is a linear or curvilinear relationship.
+
+2. **Multivariate Normality** Multiple regression assumes that the residuals are normally distributed.
+
+3. **No Multicollinearity** —Multiple regression assumes that the independent variables are not highly correlated with each other.  This assumption is tested using Variance Inflation Factor (VIF) values.
+
+**Homoscedasticity** –This assumption states that the variance of error terms are similar across the values of the independent variables.  A plot of standardized residuals versus predicted values can show whether points are equally distributed across all values of the independent variables.
+
+* * *
+
+## Part 3: Exploratory data analysis
+
+####looking at data set
+```{r}
+#get the head of the data
+head(movies)
+#get the summary of the the columns in the data 
+summary(movies)
+#number of rows and coumns
+dim(movies)
+```
+      - These outputs give us a good idea of our data set to start
+      - We have 651 rows and 32 columns
+
+features going to use
+**title_type**: Type of movie (Documentary, Feature Film, TV Movie)
+**genre**: Genre of movie (Action & Adventure, Comedy, Documentary, Drama, Horror, Mystery & Suspense, Other)
+**runtime**: Runtime of movie (in minutes)
+**mpaa_rating**: MPAA rating of the movie (G, PG, PG-13, R, Unrated)
+**thtr_rel_year**: Year the movie is released in theaters
+
+```{r}
+#selecting 5 features to compare with the target feature (audience score)
+movies_selected = movies %>%
+      select(title_type, genre, runtime, mpaa_rating, thtr_rel_year, audience_score)
+head(movies_selected)
+```
+```{r}
+#find if any NA values and then drop them
+sum(is.na(movies_selected)) 
+#only one na value so lets drop it
+movies_selected = na.omit(movies_selected)
+sum(is.na(movies_selected)) 
+```
+
+####looking at target feature
+```{r}
+#lets look at audience score here, our target feature for linear regression
+summary(movies_selected$audience_score)
+table(movies_selected$audience_score)
+
+hist(movies_selected$audience_score, xlab = "Audience Score", main = "histogram of audience score")
+```
+```{r}
+ggplot(movies, aes(x=factor(genre), y=audience_score)) +
+  geom_boxplot() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+###boxplots for each variable against audience score
+```{r, fig.width=7, fig.height=3}
+ggplot(movies_selected, aes(x=factor(genre), y=audience_score)) +
+    geom_boxplot() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggplot(movies_selected, aes(x=factor(title_type), y=audience_score)) +
+    geom_boxplot() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggplot(movies_selected, aes(x=factor(mpaa_rating), y=audience_score)) +
+    geom_boxplot() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggplot(movies_selected, aes(x=factor(thtr_rel_year), y=audience_score)) +
+    geom_jitter() +
+    geom_abline() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggplot(movies_selected, aes(x=factor(runtime), y=audience_score)) +
+    geom_jitter() + geom_abline() +
+    theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=1))
+
+```
+
+Genre: 
+  -   Outliers in Animation, documentary, horror, and musical categories
+title type:
+  - documentaries get, on average, a higher score than feature films and TV movies
+  - Tv movies are quite variable in terms of score
+mpaa rating:
+  - unrated and G movies have outliers
+  - unrated has the higher score on average
+Release year in theatres:
+  - doesnt seem to have any real trend in the relationship between release year and audience score
+run time:
+  - longer movies seem to have a higher rating while short movies seem to have more variable ratings
+  
+```{r, fig.width=10, fig.height=3}}
+# Check how these variables are related to variable best_pic_nom usng pairs plot
+# Check how these variables are related to variable best_pic_nom usng pairs plot
+movies_selected = movies %>%
+      select(genre, runtime, mpaa_rating, thtr_rel_year, audience_score)
+
+panel.cor <- function(x, y, ...)
+{
+par(usr = c(0, 2, 0, 2))
+txt <- as.character(format(cor(x, y), digits = 2))
+text(0.7, 0.7, txt, cex = 2* abs(cor(x, y)))
+}
+pairs(movies_selected, upper.panel=panel.cor)
+```
+  
+I decided to drop title type because it overlaps with genre- both contain "documentary". An observation of the pairs plot depicts  the explanatory variables dont really have a level of collinearity. This means some of the variables are not necessarily correlated and therefore are independent of each other. Multicollinearity should be avoided which results in complication of the model. A parsimonious model is prefered.
+
+Since this model is for predictions, adjusted R2 is more reliable for predictions than p-value. p-value is used for statistically significant predictors and not for model prediction. This model prediction will use backwards elimination method to get at the model that gives the best and more parsimonious model with the highest adjusted R2 value.
+
+* * *
+
+## Part 4: Modeling
+
+```{r}
+lr_movies <- lm(audience_score ~ thtr_rel_year + mpaa_rating + runtime + genre, data = movies_selected)
+summary(lr_movies)
+
+```
+
+- MPAA rating, genre, and runtime have at least one category that are statistically significant and therefore are kept in the model. Teatre release year is not necessarily significant with a P value of 0.07438 and thus will be eliminated from the model
+
+```{r}
+lr_movies_best <- lm(audience_score ~ mpaa_rating + runtime + genre, data = movies_selected)
+summary(lr_movies_best)
+
+```
+
+- each variable has at least one part that is statistically significant so I am going to keep this model as the best model
+
+
+##Model diagnostics
+The diagnostic plots show residuals in four different ways:
+
+1. **Residuals vs Fitted**. Used to check the linear relationship assumptions. A horizontal line, without distinct patterns is an indication for a linear relationship, what is good.
+
+2. **Normal Q-Q**. Used to examine whether the residuals are normally distributed. It’s good if residuals points follow the straight dashed line.
+
+3. **Scale-Location (or Spread-Location)**. Used to check the homogeneity of variance of the residuals (homoscedasticity). Horizontal line with equally spread points is a good indication of homoscedasticity. 
+
+4. **Residuals vs Leverage**. Used to identify influential cases, that is extreme values that might influence the regression results when included or excluded from the analysis. Not all outliers are influential in linear regression analysis (whatever outliers mean). Even though data have extreme values, they might not be influential to determine a regression line. That means, the results wouldn’t be much different if we either include or exclude them from analysis. They follow the trend in the majority of cases and they don’t really matter; they are not influential. On the other hand, some cases could be very influential even if they look to be within a reasonable range of the values. They could be extreme cases against a regression line and can alter the results if we exclude them from analysis.  Unlike the other plots, this time patterns are not relevant. We watch out for outlying values at the upper right corner or at the lower right corner. Those spots are the places where cases can be influential against a regression line. Look for cases outside of a dashed line, Cook’s distance. When cases are outside of the Cook’s distance (meaning they have high Cook’s distance scores), the cases are influential to the regression results.
+
+
+#### Linear relationship between numerical explanatory variables and the response variable
+
+```{r}
+plot(lr_movies_best)
+
+```
+**Residuals vs Fitted**: for the most part, we can see that there is no real distinctive pattern and the residuals are centered around 0. The last point that turns the line down should be considered, however.
+**Normal Q-Q**: Our plot follows a straight line, the residuals are therefore likely  normally distributed
+
+**Scale-Location (or Spread-Location)**: for the most part we have a Horizontal line with equally spread points, a good indication of homoscedasticity. There does seem to be an outlier that drags our line down however.
+
+**Residuals vs Leverage**: we do not have any influential plots since all of the cases are inside cooks distance
+
+* * *
+
+## Part 5: Prediction
+
+This model will be used to predict the audience score of the Dark Knight. The variable values are from the IMBD full dataset
+audience_score ~ mpaa_rating + runtime + genre, data = movies_selected
+
+```{r}
+mpaa_rating = "PG-13"
+runtime = 152
+genre = "Action & Adventure"
+
+model_predict <- data.frame(mpaa_rating, runtime, genre)
+predict(lr_movies_best, model_predict, interval = "prediction")
+
+```
+
+fit: the predicted rating for the Dark Knight
+lwr and upr: the lower and the upper confidence limits for the expected values, respectively. By default the function produces the 95% confidence limits.
+* * *
+
+My model predicted an audience score of 57.86092 for the Dark Knight, when it should have been 90. Whats more is that the confidence intervals were quite large (22.22, 93.499). This model may not be accurate for predicting audience score.
